@@ -243,6 +243,13 @@ public class MagicImageView extends ImageView {
 
         fitImageToView();
     }
+    
+    private void reset() {
+        mMatrix.reset();
+        mNormalizedScale = 1;
+        mState = State.NONE;
+        mDegree = 0;
+    }
 
     /**
      * 使图片适应屏幕
@@ -251,14 +258,18 @@ public class MagicImageView extends ImageView {
         if (mMatrix == null) {
             return;
         }
+        reset();
         Drawable drawable = getDrawable();
         int drawableWidth = drawable.getIntrinsicWidth();
         int drawableHeight = drawable.getIntrinsicHeight();
 
-        float scaleWidth = (float) mViewWidth / drawableWidth;
-        float scaleHeight = (float) mViewHeight / drawableHeight;
+        float scale1 = (float) mViewWidth / drawableWidth;
+        float scale2 = (float) mViewHeight / drawableHeight;
+        float scale3 = (float) mViewWidth / drawableHeight;
+        float scale4 = (float) mViewHeight / drawableWidth;
 
-        float scale = Math.min(scaleWidth, scaleHeight);
+        float scale = Math.min(Math.min(scale1, scale2),
+                Math.min(scale3, scale4));
         mMatrix.setScale(scale, scale);
 
         mMatchedImageWidth = drawableWidth * scale;
