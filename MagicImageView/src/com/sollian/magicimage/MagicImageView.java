@@ -1,6 +1,6 @@
 package com.sollian.magicimage;
 
-import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 
 import android.annotation.SuppressLint;
@@ -71,7 +71,7 @@ public class MagicImageView extends ImageView {
     /**
      * 适应屏幕时，图片的宽高
      */
-    private float mMatchedImageWidth, mMatchedImageHeight;
+    private float mMatchedImageWidth = 0, mMatchedImageHeight = 0;
 
     private static enum State {
         NONE, ONE_POINT, TWO_POINT,
@@ -178,34 +178,21 @@ public class MagicImageView extends ImageView {
 
     public void setByte(byte[] data) {
         if (data == null) {
-            setInputStream(null);
             return;
         }
-        ByteArrayInputStream is = new ByteArrayInputStream(data);
-        setInputStream(is);
+        super.setImageBitmap(decodeByte(data));
     }
 
-    @SuppressWarnings("deprecation")
     public void setInputStream(InputStream is) {
         if (is == null) {
-            setImageBitmap(null);
             return;
         }
-        Bitmap bmp = null;
-        BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inPreferredConfig = Bitmap.Config.RGB_565;
-        options.inPurgeable = true;
-        options.inInputShareable = true;
-        options.inSampleSize = 1;
-        while (true) {
-            try {
-                bmp = BitmapFactory.decodeStream(is, null, options);
-                break;
-            } catch (OutOfMemoryError e) {
-                options.inSampleSize++;
-            }
+        byte[] data = null;
+        try {
+            data = is2Byte(is);
+        } catch (Exception e) {
         }
-        setImageBitmap(bmp);
+        setByte(data);
     }
 
     @Override
@@ -216,21 +203,69 @@ public class MagicImageView extends ImageView {
 
     @Override
     public void setImageBitmap(Bitmap bm) {
+        if (bm == null) {
+            return;
+        }
+        bm = decodeByte(bmp2Byte(bm));
+        super.setImageBitmap(bm);
+        fitImageToView();
+    }
+
+    @SuppressWarnings("deprecation")
+    private Bitmap decodeByte(byte[] data) {
+        if (data == null) {
+            return null;
+        }
+        Bitmap bmp = null;
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inPreferredConfig = Bitmap.Config.RGB_565;
+        options.inPurgeable = true;
+        options.inInputShareable = true;
+
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, options);
         int screenWidth = 0, screenHeight = 0;
-        if (bm.getWidth() > bm.getHeight()) {
+        if (options.outWidth > options.outHeight) {
             screenWidth = SCREEN_HEIGHT;
             screenHeight = SCREEN_WIDTH;
         } else {
             screenWidth = SCREEN_WIDTH;
             screenHeight = SCREEN_HEIGHT;
         }
-        while (bm.getWidth() > screenWidth * 2
-                || bm.getHeight() > screenHeight * 2) {
-            bm = Bitmap.createScaledBitmap(bm, bm.getWidth() / 2,
-                    bm.getHeight() / 2, false);
+        float scaleX = (float) options.outWidth / screenWidth * 2;
+        float scaleY = (float) options.outHeight / screenHeight * 2;
+        options.inSampleSize = (int) Math.ceil(Math.max(scaleX, scaleY));
+
+        options.inJustDecodeBounds = false;
+        while (true) {
+            try {
+                bmp = BitmapFactory.decodeByteArray(data, 0, data.length,
+                        options);
+                break;
+            } catch (OutOfMemoryError e) {
+                options.inSampleSize++;
+            }
         }
-        super.setImageBitmap(bm);
-        fitImageToView();
+        return bmp;
+    }
+
+    private byte[] is2Byte(InputStream inStream) throws Exception {
+        byte[] buffer = new byte[1024];
+        int len = -1;
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        while ((len = inStream.read(buffer)) != -1) {
+            outStream.write(buffer, 0, len);
+        }
+        byte[] data = outStream.toByteArray();
+        outStream.close();
+        inStream.close();
+        return data;
+    }
+
+    private byte[] bmp2Byte(Bitmap bm) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        bm.compress(Bitmap.CompressFormat.PNG, 100, baos);
+        return baos.toByteArray();
     }
 
     @Override
@@ -243,12 +278,12 @@ public class MagicImageView extends ImageView {
 
         fitImageToView();
     }
-    
+
     private void reset() {
         mMatrix.reset();
         mNormalizedScale = 1;
         mState = State.NONE;
-        mDegree = 0;
+        // mDegree = 0;
     }
 
     /**
@@ -260,6 +295,9 @@ public class MagicImageView extends ImageView {
         }
         reset();
         Drawable drawable = getDrawable();
+        if (drawable == null) {
+            return;
+        }
         int drawableWidth = drawable.getIntrinsicWidth();
         int drawableHeight = drawable.getIntrinsicHeight();
 
@@ -270,12 +308,14 @@ public class MagicImageView extends ImageView {
 
         float scale = Math.min(Math.min(scale1, scale2),
                 Math.min(scale3, scale4));
-        mMatrix.setScale(scale, scale);
-
+        // mMatrix.setScale(scale, scale);
         mMatchedImageWidth = drawableWidth * scale;
         mMatchedImageHeight = drawableHeight * scale;
+
+        mMatrix.setScale(scale, scale);
         mMatrix.postTranslate((mViewWidth - mMatchedImageWidth) / 2,
                 (mViewHeight - mMatchedImageHeight) / 2);
+        mMatrix.postRotate(mDegree, mViewWidth / 2, mViewHeight / 2);
 
         setImageMatrix(mMatrix);
     }
